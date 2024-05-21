@@ -1,0 +1,40 @@
+# pyproject.toml
+# originally based on - https://realpython.com/pypi-publish-python-package/
+
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "multiperson"
+readme = "README.md"
+authors = [
+    {name = "Philip Queen", email = "philip@freemocap.org"},
+    ]
+
+#dynamic = ["dependencies"]
+dependencies = [
+    "opencv-contrib-python==4.8.*",
+    "numpy",
+]
+requires-python = ">=3.9,<3.12"
+
+dynamic = ["version", "description"]
+
+[project.urls]
+Homepage = "https://github.com/philipqueen/multiperson"
+
+[tool.bumpver]
+current_version = "v2024.04.1001"
+
+version_pattern = "vYYYY.0M.BUILD[-TAG]"
+commit_message  = "Bump version {old_version} -> {new_version}"
+commit          = true
+tag             = true
+push            = true
+
+[tool.bumpver.file_patterns]
+"multiperson/__init__.py" = ["{version}"]
+
+[tool.setuptools]
+py-modules = ["multiperson"]
