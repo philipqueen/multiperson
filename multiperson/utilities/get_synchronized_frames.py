@@ -43,7 +43,7 @@ def display_frames(frames: dict[str, np.ndarray]):
 def save_frames(frames: dict[str, np.ndarray], frame_number: int):
     for frame_path, frame in frames.items():
         name = Path(frame_path).stem + f"_{frame_number}" + ".jpg"
-        save_folder = Path(__file__).parent.parent.parent / "assets/synchronized_frames"
+        save_folder = Path(__file__).parent.parent / "assets/synchronized_frames"
 
         if not save_folder.exists():
             save_folder.mkdir(parents=True)
@@ -54,7 +54,7 @@ def save_frames(frames: dict[str, np.ndarray], frame_number: int):
 
 if __name__ == "__main__":
     video_path = Path("/Users/philipqueen/freemocap_data/recording_sessions/freemocap_sample_data/synchronized_videos/")
-    frame_number = 500
+    frame_number = 170
 
     frames = get_synchronized_frames(video_path, frame_number)
 

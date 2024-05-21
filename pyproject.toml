@@ -16,6 +16,7 @@ authors = [
 dependencies = [
     "opencv-contrib-python==4.8.*",
     "numpy",
+    "rtoml",
 ]
 requires-python = ">=3.9,<3.12"
 
