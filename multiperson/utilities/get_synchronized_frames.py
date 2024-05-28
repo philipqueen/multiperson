@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-from multiperson.utilities.get_video_paths import get_video_paths
+from utilities.get_video_paths import get_video_paths
 
 def get_synchronized_frames(
     video_folder_path: str | Path,
