@@ -18,6 +18,15 @@ def fundamental_from_projections(P1: np.ndarray, P2: np.ndarray) -> np.ndarray:
 
     fundamental = np.zeros((3, 3))
 
+    # for i in range(3):
+    #     for j in range(3):
+    #         x_matrix = np.delete(P1, i, axis=0)
+    #         y_matrix = np.delete(P2, j, axis=0)
+    #         xy_matrix = np.vstack((x_matrix, y_matrix))
+    #         fundamental[i, j] = np.linalg.det(xy_matrix)
+
+    # return fundamental
+
     x_matrix = np.array(
         [
             np.vstack((P1[1, :], P1[2, :])),
@@ -54,13 +63,12 @@ def check_fundamental(
     print("Rank of F:", rank)
     if rank != 2:
         raise ValueError(f"Fundamental matrix is rank {rank}, but must be 2")
-    
+
     # check that det(F) = 0: "F also satisfies the constraint det F = 0" - HZ book
     determinant = np.linalg.det(fundamental)
     print("Determinant of F:", determinant)
     if abs(determinant) > 1e-10:
         raise ValueError("Fundamental matrix is not invertible")
-
 
     # Check the epipolar constraint for each pair of points
     # "The fundamental matrix satisfies the condition that for any pair of corresponding points x ↔ x′ in the two images x′TFx = 0." - HZ book
@@ -85,25 +93,21 @@ def draw_lines(image: np.ndarray, lines: np.ndarray, points: np.ndarray):
     return image
 
 
-def draw_epipolar_lines(
-    image_0: np.ndarray,
-    image_1: np.ndarray,
-    fundamental_matrix: np.ndarray,
-    points_0: np.ndarray,
-    points_1: np.ndarray,
-):
-    print(f"fundamental_matrix.shape: {fundamental_matrix.shape}")
+def calculate_epipolar_lines(
+    fundamental_matrix: np.ndarray, points: np.ndarray
+) -> np.ndarray:
+    """
+    Calculate the epipolar lines for a set of points using the fundamental matrix.
+    Lines are represent in standard form, ax + by + c = 0, where a, b, and c are the first dimension of the output array.
+    The lines represent matching points for the input points in the other image view, so points from image 0 give line sin image 1 and vice versa.
+    """
 
-    lines2 = fundamental_matrix @ points_0.T
-    lines2 /= np.linalg.norm(lines2[:2], axis=0)
+    lines = fundamental_matrix @ points.T
+    normalized_lines = lines / np.linalg.norm(lines[:2], axis=0)
 
-    lines1 = fundamental_matrix.T @ points_1.T
-    lines1 /= np.linalg.norm(lines1[:2], axis=0)
+    return normalized_lines
 
-    img1_with_lines = draw_lines(image_0.copy(), lines1, points_0)
-    img2_with_lines = draw_lines(image_1.copy(), lines2, points_1)
 
-    return img1_with_lines, img2_with_lines
 
 def essential_from_rotation_and_translation(
     rotation: np.ndarray, translation: np.ndarray
@@ -127,13 +131,20 @@ def fundamental_from_essential(
     essential: np.ndarray,
 ):
     """
-    `The relationship between the fundamental and essential matrices is E = K′TFK` - HZ book
+    'The relationship between the fundamental and essential matrices is E = K`TFK' - HZ book
     """
     return (
         np.linalg.inv(camera_1_instrinsic).T
         @ essential
         @ np.linalg.inv(camera_0_instrinsic)
     )
+
+
+def homogenize_points(image_points: np.ndarray) -> np.ndarray:
+    if image_points.shape[1] != 3:
+        image_points = np.hstack((image_points, np.ones((image_points.shape[0], 1))))
+
+    return image_points
 
 
 if __name__ == "__main__":
@@ -159,9 +170,19 @@ if __name__ == "__main__":
     camera_1_rotation, _ = cv2.Rodrigues(np.array(calibration["cam_1"]["rotation"]))
     camera_1_translation = np.array(calibration["cam_1"]["translation"])
 
+    # Compute relative rotation and translation
+    relative_rotation = np.dot(camera_1_rotation, camera_0_rotation.T)
+    relative_translation = camera_1_translation - np.dot(
+        relative_rotation, camera_0_translation
+    )
+
     # Compute fundamental matrix:
-    # TODO: figure out how to calculate correct projection matrices
-    # rt_0 = np.c_[camera_0_rotation, camera_0_translation]
+    """
+    All of the example equations I can find assume no rotation or translation for cam 0
+    so likely we need to calculate the relative rotation and translation between the two cameras
+    and use that as camera 1's rotation and translation
+    # """
+    # rt_0 = np.c_[np.eye(3), np.array([0.0, 0.0, 0.0])]
     # perspective_0 = np.dot(camera_0_instrinsic, rt_0)
 
     # rt_1 = np.c_[camera_1_rotation, camera_1_translation]
@@ -169,12 +190,10 @@ if __name__ == "__main__":
 
     # fundamental = fundamental_from_projections(perspective_0, perspective_1)
 
-    # Compute relative rotation and translation
-    rotation = np.dot(camera_1_rotation, camera_0_rotation.T)
-    translation = camera_1_translation - np.dot(rotation, camera_0_translation)
-
     # Compute skew-symmetric matrix of T
-    essential = essential_from_rotation_and_translation(rotation, translation)
+    essential = essential_from_rotation_and_translation(
+        relative_rotation, relative_translation
+    )
 
     # Compute fundamental matrix
     fundamental = fundamental_from_essential(
@@ -197,27 +216,22 @@ if __name__ == "__main__":
     image_1_points = body_data_cams_frame_points_xy[1, active_frame, :33, :2]
 
     # Make sure points are homogenous
-    if image_0_points.shape[1] != 3:
-        image_0_points = np.hstack(
-            (image_0_points, np.ones((image_0_points.shape[0], 1)))
-        )
-    if image_1_points.shape[1] != 3:
-        image_1_points = np.hstack(
-            (image_1_points, np.ones((image_1_points.shape[0], 1)))
-        )
+    image_0_points = homogenize_points(image_0_points)
+    image_1_points = homogenize_points(image_1_points)
 
     print(f"image_0_points.shape: {image_0_points.shape}")
     print(f"image_1_points.shape: {image_1_points.shape}")
 
     check_fundamental(fundamental, image_0_points, image_1_points)
 
-    image_0_with_lines, image_1_with_lines = draw_epipolar_lines(
-        image_0=image_0,
-        image_1=image_1,
-        fundamental_matrix=fundamental,
-        points_0=image_0_points,
-        points_1=image_1_points,
-    )
+    image_1_lines = calculate_epipolar_lines(fundamental, image_0_points)
+    image_0_lines = calculate_epipolar_lines(fundamental.T, image_1_points)
+
+    print(f"image_1_lines.shape: {image_1_lines.shape}")
+    print(f"image_0_lines.shape: {image_0_lines.shape}")
+
+    image_1_with_lines = draw_lines(image_0.copy(), image_0_lines, image_0_points)
+    image_0_with_lines = draw_lines(image_1.copy(), image_1_lines, image_1_points)
 
     display_frames(
         frames={"image_0": image_0_with_lines, "image_1": image_1_with_lines}
