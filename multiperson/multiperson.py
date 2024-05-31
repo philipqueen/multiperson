@@ -108,7 +108,6 @@ def calculate_epipolar_lines(
     return normalized_lines
 
 
-
 def essential_from_rotation_and_translation(
     rotation: np.ndarray, translation: np.ndarray
 ) -> np.ndarray:
@@ -141,10 +140,29 @@ def fundamental_from_essential(
 
 
 def homogenize_points(image_points: np.ndarray) -> np.ndarray:
-    if image_points.shape[1] != 3:
-        image_points = np.hstack((image_points, np.ones((image_points.shape[0], 1))))
+    """
+    Convert image coordinates to homogeneous coordinates (x, y, 1).
+    """
+    if image_points.shape[1] == 3:
+        image_points = image_points[:, :2]  # Take only x and y
+  
+    if image_points.shape[1] == 2:
+        homogeneous_points = np.hstack((image_points, np.ones((image_points.shape[0], 1))))
+    else:
+        raise ValueError("Input points must be 2D (N, 2) or 3D (N, 3)")
 
-    return image_points
+    return homogeneous_points
+
+def calculate_distance_to_lines(
+    points: np.ndarray, lines: np.ndarray
+) -> np.ndarray:
+    # Calculates the absolute value of (a*x + b*y + c)
+    numerators = np.abs(np.sum(points * lines.T, axis=1))
+
+    # (a^2 + b^2)^0.5
+    denominators = np.sqrt(np.sum(lines[:2, :]**2, axis=0))
+
+    return numerators / denominators
 
 
 if __name__ == "__main__":
@@ -236,3 +254,9 @@ if __name__ == "__main__":
     display_frames(
         frames={"image_0": image_0_with_lines, "image_1": image_1_with_lines}
     )
+
+    distance_0 = calculate_distance_to_lines(image_0_points, image_0_lines)
+    distance_1 = calculate_distance_to_lines(image_1_points, image_1_lines)
+
+    print(f"distance_0 average: {np.mean(distance_0)}")
+    print(f"distance_1 average: {np.mean(distance_1)}")
