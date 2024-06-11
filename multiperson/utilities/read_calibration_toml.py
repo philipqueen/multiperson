@@ -1,4 +1,6 @@
 from typing import Any
+import cv2
+import numpy as np
 import rtoml
 from pathlib import Path
 
@@ -11,9 +13,9 @@ def read_calibration_toml(path_to_calibration_toml: str | Path) -> dict[str, dic
         if key != "metadata":
             processed_calibration[key] = {}
             processed_calibration[key]["name"] = value["name"]
-            processed_calibration[key]["instrinsics_matrix"] = value["matrix"]
-            processed_calibration[key]["rotation"] = value["rotation"]
-            processed_calibration[key]["translation"] = value["translation"]
+            processed_calibration[key]["instrinsics_matrix"] = np.array(value["matrix"])
+            processed_calibration[key]["rotation"], _ = cv2.Rodrigues(np.array(value["rotation"]))
+            processed_calibration[key]["translation"] = np.array(value["translation"])
 
     return processed_calibration
 
