@@ -11,6 +11,8 @@ readme = "README.md"
 authors = [
     {name = "Philip Queen", email = "philip@freemocap.org"},
     ]
+version = "1.0.0"
+description = "A Python package for multi-person tracking"
 
 #dynamic = ["dependencies"]
 dependencies = [
@@ -19,6 +21,9 @@ dependencies = [
     "rtoml",
 ]
 requires-python = ">=3.9,<3.12"
+
+[project.optional-dependencies]
+dev = ["pytest", "black"]
 
 dynamic = ["version", "description"]
 
