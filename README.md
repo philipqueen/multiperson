@@ -1,5 +1,7 @@
 # multiperson
 
+Scratch repo for developing multiperson tracking in Freemocap.
+
 ## References:
  	
 - Multiple View Geometry in Computer Vision, Second Edition, Richard Hartley and Andrew Zisserman

@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-from utilities.read_calibration_toml import read_calibration_toml
+from data_models.camera_collection import CameraCollection
 from utilities.get_synchronized_frames import display_frames
 
 
@@ -187,28 +187,31 @@ if __name__ == "__main__":
         Path(__file__).parent
         / "assets/sample_data/freemocap_sample_data_camera_calibration.toml"
     )
-    calibration = read_calibration_toml(path_to_calibration_toml)
+    camera_collection = CameraCollection.from_file(path_to_calibration_toml)
 
-    image_0_path = "/Users/philipqueen/Documents/GitHub/multiperson/multiperson/assets/sample_data/synchronized_frames/sesh_2022-09-19_16_16_50_in_class_jsm_synced_Cam1_500.jpg"
-    image_0 = cv2.imread(image_0_path)
+    id_list = camera_collection.ids
+    a_index = 0
+    b_index = 2
 
-    image_1_path = "/Users/philipqueen/Documents/GitHub/multiperson/multiperson/assets/sample_data/synchronized_frames/sesh_2022-09-19_16_16_50_in_class_jsm_synced_Cam3_500.jpg"
-    image_1 = cv2.imread(image_1_path)
+    cam_a = camera_collection.by_id(id_list[a_index])
+    cam_b = camera_collection.by_id(id_list[b_index])
 
-    camera_0_instrinsic = calibration["cam_2"]["instrinsics_matrix"]
-    camera_1_instrinsic = calibration["cam_1"]["instrinsics_matrix"]
-    camera_0_rotation = calibration["cam_2"]["rotation"]
-    camera_0_translation = calibration["cam_2"]["translation"]
-    camera_1_rotation = calibration["cam_1"]["rotation"]
-    camera_1_translation = calibration["cam_1"]["translation"]
+    print(f"Cam A: {cam_a.name}")
+    print(f"Cam B: {cam_b.name}")
+
+    image_a_path = f"/Users/philipqueen/Documents/GitHub/multiperson/multiperson/assets/sample_data/synchronized_frames/{cam_a.name}_500.jpg"
+    image_a = cv2.imread(image_a_path)
+
+    image_b_path = f"/Users/philipqueen/Documents/GitHub/multiperson/multiperson/assets/sample_data/synchronized_frames/{cam_b.name}_500.jpg"
+    image_b = cv2.imread(image_b_path)
 
     # Compute relative rotation and translation
     relative_rotation, relative_translation = (
         calculate_relative_rotation_and_translation(
-            camera_0_rotation,
-            camera_0_translation,
-            camera_1_rotation,
-            camera_1_translation,
+            cam_a.rotation,
+            cam_a.translation,
+            cam_b.rotation,
+            cam_b.translation,
         )
     )
 
@@ -238,7 +241,7 @@ if __name__ == "__main__":
 
     # Compute fundamental matrix
     fundamental = fundamental_from_essential(
-        camera_0_instrinsic, camera_1_instrinsic, essential
+        cam_a.intrinsic, cam_b.intrinsic, essential
     )
 
     print(f"fundamental: {fundamental}")
@@ -257,8 +260,8 @@ if __name__ == "__main__":
 
     active_frame = 500
 
-    image_0_points = body_data_cams_frame_points_xy[2, active_frame, :33, :2]
-    image_1_points = body_data_cams_frame_points_xy[1, active_frame, :33, :2]
+    image_0_points = body_data_cams_frame_points_xy[a_index, active_frame, :33, :2]
+    image_1_points = body_data_cams_frame_points_xy[b_index, active_frame, :33, :2]
 
     # Make sure points are homogenous
     image_0_points = homogenize_points(image_0_points)
@@ -275,8 +278,8 @@ if __name__ == "__main__":
     print(f"image_1_lines.shape: {image_1_lines.shape}")
     print(f"image_0_lines.shape: {image_0_lines.shape}")
 
-    image_1_with_lines = draw_lines(image_0.copy(), image_0_lines, image_0_points)
-    image_0_with_lines = draw_lines(image_1.copy(), image_1_lines, image_1_points)
+    image_1_with_lines = draw_lines(image_a.copy(), image_0_lines, image_0_points)
+    image_0_with_lines = draw_lines(image_b.copy(), image_1_lines, image_1_points)
 
     display_frames(
         frames={"image_0": image_0_with_lines, "image_1": image_1_with_lines}
