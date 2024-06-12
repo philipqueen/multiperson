@@ -3,53 +3,8 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-from data_models.camera_collection import CameraCollection
+from data_models.camera_collection import CameraCollection, Camera
 from utilities.get_synchronized_frames import display_frames
-
-
-def fundamental_from_projections(P1: np.ndarray, P2: np.ndarray) -> np.ndarray:
-    """
-    Calculate the fundamental matrix from the projection matrices (P1, P2).
-
-    Adapted and modified from OpenCV's fundamentalFromProjections function in the opencv_sfm module
-    """
-
-    assert P1.shape == (3, 4), "P1 must be a 3x4 matrix"
-    assert P2.shape == (3, 4), "P2 must be a 3x4 matrix"
-
-    fundamental = np.zeros((3, 3))
-
-    # for i in range(3):
-    #     for j in range(3):
-    #         x_matrix = np.delete(P1, i, axis=0)
-    #         y_matrix = np.delete(P2, j, axis=0)
-    #         xy_matrix = np.vstack((x_matrix, y_matrix))
-    #         fundamental[i, j] = np.linalg.det(xy_matrix)
-
-    # return fundamental
-
-    x_matrix = np.array(
-        [
-            np.vstack((P1[1, :], P1[2, :])),
-            np.vstack((P1[2, :], P1[0, :])),
-            np.vstack((P1[0, :], P1[1, :])),
-        ]
-    )
-
-    y_matrix = np.array(
-        [
-            np.vstack((P2[1, :], P2[2, :])),
-            np.vstack((P2[2, :], P2[0, :])),
-            np.vstack((P2[0, :], P2[1, :])),
-        ]
-    )
-
-    for i in range(3):
-        for j in range(3):
-            xy_matrix = np.vstack((x_matrix[j], y_matrix[i]))
-            fundamental[i, j] = np.linalg.det(xy_matrix)
-
-    return fundamental
 
 
 def check_fundamental_properties(fundamental: np.ndarray):
@@ -73,14 +28,13 @@ def check_fundamental_properties(fundamental: np.ndarray):
 def check_fundamental_epipolar_constraint(
     fundamental: np.ndarray, points_0: np.ndarray, points_1: np.ndarray
 ):
-
     # Check the epipolar constraint for each pair of points
     # "The fundamental matrix satisfies the condition that for any pair of corresponding points x ↔ x′ in the two images x′TFx = 0." - HZ book
     for x1, x2, i in zip(points_0, points_1, range(len(points_0))):
         epipolar_constraint = x2.T @ fundamental @ x1
         print(
             f"Epipolar constraint for point pair {i}: {epipolar_constraint} - should be 0"
-        )
+        )  # check the units here - is this pixels or mm?
 
 
 def draw_lines(image: np.ndarray, lines: np.ndarray, points: np.ndarray):
@@ -103,6 +57,7 @@ def calculate_epipolar_lines(
     Lines are represent in standard form, ax + by + c = 0, where a, b, and c are the first dimension of the output array.
     The lines represent matching points for the input points in the other image view, so points from image 0 give line sin image 1 and vice versa.
     """
+    # TODO: Test (potentially compare to opencv's function cv2.computeCorrespondEpilines)
 
     lines = fundamental_matrix @ points.T
     normalized_lines = lines / np.linalg.norm(lines[:2], axis=0)
@@ -113,10 +68,11 @@ def calculate_epipolar_lines(
 def essential_from_rotation_and_translation(
     rotation: np.ndarray, translation: np.ndarray
 ) -> np.ndarray:
-    return get_skew_symmetric_translation(translation) @ rotation
+    # TODO: Test
+    return skew_symmetric_matrix_from_vector(translation) @ rotation
 
 
-def get_skew_symmetric_translation(translation: np.ndarray) -> np.ndarray:
+def skew_symmetric_matrix_from_vector(translation: np.ndarray) -> np.ndarray:
     return np.array(
         [
             [0, -translation[2], translation[1]],
@@ -134,6 +90,7 @@ def fundamental_from_essential(
     """
     'The relationship between the fundamental and essential matrices is E = K`^TFK' - HZ book
     """
+    # TODO: Test
     return (
         np.linalg.inv(camera_1_instrinsic).T
         @ essential
@@ -141,10 +98,35 @@ def fundamental_from_essential(
     )
 
 
+def fundamental_from_camera_pair(cam_0: Camera, cam_1: Camera) -> np.ndarray:
+    relative_rotation, relative_translation = (
+        calculate_relative_rotation_and_translation(
+            cam_0.rotation,
+            cam_0.translation,
+            cam_1.rotation,
+            cam_1.translation,
+        )
+    )
+
+    essential = essential_from_rotation_and_translation(
+        relative_rotation, relative_translation
+    )
+
+    fundamental = fundamental_from_essential(
+        cam_0.intrinsic, cam_1.intrinsic, essential
+    )
+
+    print(f"fundamental: {fundamental}")
+    check_fundamental_properties(fundamental)
+
+    return fundamental
+
+
 def homogenize_points(image_points: np.ndarray) -> np.ndarray:
     """
     Convert image coordinates to homogeneous coordinates (x, y, 1).
     """
+    # TODO: Test
     if image_points.shape[1] == 3:
         image_points = image_points[:, :2]  # Take only x and y
 
@@ -160,6 +142,7 @@ def homogenize_points(image_points: np.ndarray) -> np.ndarray:
 
 def calculate_distance_to_lines(points: np.ndarray, lines: np.ndarray) -> np.ndarray:
     # Calculates the absolute value of (a*x + b*y + c), then divides by the square root of the square
+    # TODO: Test
     numerators = np.abs(np.sum(points * lines.T, axis=1))
     denominators = np.sqrt(np.sum(lines[:2, :] ** 2, axis=0))
 
@@ -174,15 +157,26 @@ def calculate_relative_rotation_and_translation(
 ) -> Tuple[np.ndarray, np.ndarray]:
     # for rotation matrices, the inverse is the transpose. These methods should be the same, but differ because of slight numerical errors
     # relative_rotation = np.linalg.inv(camera_0_rotation) @ camera_1_rotation
-    relative_rotation = camera_1_rotation @ camera_0_rotation.T # this version appears more accurate across camera views
-    relative_translation = camera_1_translation - (relative_rotation @ camera_0_translation)
+    relative_rotation = (
+        camera_1_rotation @ camera_0_rotation.T
+    )  # this version appears more accurate across camera views
+    relative_translation = camera_1_translation - (
+        relative_rotation @ camera_0_translation
+    )
 
     return relative_rotation, relative_translation
 
 
+def get_frame(camera: Camera, active_frame: int):
+    """
+    This will obviously look very different in practice
+    """
+    image_path = f"/Users/philipqueen/Documents/GitHub/multiperson/multiperson/assets/sample_data/synchronized_frames/{camera.name}_{active_frame}.jpg"
+    image = cv2.imread(image_path)
+    return image
+
+
 if __name__ == "__main__":
-    # Setup:
-    # this can all be one class, that creates camera subclasses based on initilisation with the toml
     path_to_calibration_toml = (
         Path(__file__).parent
         / "assets/sample_data/freemocap_sample_data_camera_calibration.toml"
@@ -196,56 +190,7 @@ if __name__ == "__main__":
     cam_a = camera_collection.by_id(id_list[a_index])
     cam_b = camera_collection.by_id(id_list[b_index])
 
-    print(f"Cam A: {cam_a.name}")
-    print(f"Cam B: {cam_b.name}")
-
-    image_a_path = f"/Users/philipqueen/Documents/GitHub/multiperson/multiperson/assets/sample_data/synchronized_frames/{cam_a.name}_500.jpg"
-    image_a = cv2.imread(image_a_path)
-
-    image_b_path = f"/Users/philipqueen/Documents/GitHub/multiperson/multiperson/assets/sample_data/synchronized_frames/{cam_b.name}_500.jpg"
-    image_b = cv2.imread(image_b_path)
-
-    # Compute relative rotation and translation
-    relative_rotation, relative_translation = (
-        calculate_relative_rotation_and_translation(
-            cam_a.rotation,
-            cam_a.translation,
-            cam_b.rotation,
-            cam_b.translation,
-        )
-    )
-
-    # Compute fundamental matrix:
-    """
-    All of the example equations I can find assume no rotation or translation for cam 0
-    so likely we need to calculate the relative rotation and translation between the two cameras
-    and use that as camera 1's rotation and translation
-    # """
-    # rt_0 = np.hstack([np.eye(3), np.zeros((3, 1))])
-    # perspective_0 = np.dot(camera_0_instrinsic, rt_0)
-
-    # # rt_1 = np.hstack([camera_1_rotation, camera_1_translation.reshape(3, 1)])
-    # # perspective_1 = np.dot(camera_1_instrinsic, rt_1)
-    # rt_1 = np.hstack([relative_rotation, relative_translation.reshape(3, 1)])
-    # perspective_1 = np.dot(camera_1_instrinsic, rt_1)
-
-    # fundamental = fundamental_from_projections(perspective_0, perspective_1)
-
-    # print(f"fundamental: {fundamental}")
-    # check_fundamental_properties(fundamental)
-
-    # Compute essential matrix
-    essential = essential_from_rotation_and_translation(
-        relative_rotation, relative_translation
-    )
-
-    # Compute fundamental matrix
-    fundamental = fundamental_from_essential(
-        cam_a.intrinsic, cam_b.intrinsic, essential
-    )
-
-    print(f"fundamental: {fundamental}")
-    check_fundamental_properties(fundamental)
+    fundamental = fundamental_from_camera_pair(cam_a, cam_b)
 
     # Get image points:
     body_data_path = "/Users/philipqueen/Documents/GitHub/multiperson/multiperson/assets/sample_data/2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
@@ -259,6 +204,9 @@ if __name__ == "__main__":
     # Everything below this will have to happen per frame
 
     active_frame = 500
+
+    image_a = get_frame(cam_a, active_frame)
+    image_b = get_frame(cam_b, active_frame)
 
     image_0_points = body_data_cams_frame_points_xy[a_index, active_frame, :33, :2]
     image_1_points = body_data_cams_frame_points_xy[b_index, active_frame, :33, :2]
@@ -275,6 +223,12 @@ if __name__ == "__main__":
     image_1_lines = calculate_epipolar_lines(fundamental, image_0_points)
     image_0_lines = calculate_epipolar_lines(fundamental.T, image_1_points)
 
+    distance_0 = calculate_distance_to_lines(image_0_points, image_0_lines)
+    distance_1 = calculate_distance_to_lines(image_1_points, image_1_lines)
+
+    print(f"distance_0 average: {np.mean(distance_0)}")
+    print(f"distance_1 average: {np.mean(distance_1)}")
+
     print(f"image_1_lines.shape: {image_1_lines.shape}")
     print(f"image_0_lines.shape: {image_0_lines.shape}")
 
@@ -284,9 +238,3 @@ if __name__ == "__main__":
     display_frames(
         frames={"image_0": image_0_with_lines, "image_1": image_1_with_lines}
     )
-
-    distance_0 = calculate_distance_to_lines(image_0_points, image_0_lines)
-    distance_1 = calculate_distance_to_lines(image_1_points, image_1_lines)
-
-    print(f"distance_0 average: {np.mean(distance_0)}")
-    print(f"distance_1 average: {np.mean(distance_1)}")
