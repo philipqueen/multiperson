@@ -7,7 +7,17 @@ from data_models.camera_collection import CameraCollection, Camera
 from utilities.get_synchronized_frames import display_frames
 
 
-def check_fundamental_properties(fundamental: np.ndarray):
+def check_fundamental_properties(fundamental: np.ndarray) -> None:
+    """
+    Check fundamental matrix has required properties:
+    - rank 2
+    - det(F) = 0
+
+    Raises ValueError if any of these properties are violated
+    """
+    if fundamental.shape != (3, 3):
+        raise ValueError("Fundamental matrix must be 3x3")
+
     # Compute the SVD of F
     _, S, _ = np.linalg.svd(fundamental)
     print("Singular values of F:", S)
@@ -19,6 +29,7 @@ def check_fundamental_properties(fundamental: np.ndarray):
         raise ValueError(f"Fundamental matrix is rank {rank}, but must be 2")
 
     # check that det(F) = 0: "F also satisfies the constraint det F = 0" - HZ book
+    # technically, this is redundant because for a 3x3 matrix, if rank < 3, then det(F) = 0, but could be useful for slight numerical differences
     determinant = np.linalg.det(fundamental)
     print("Determinant of F:", determinant)
     if abs(determinant) > 1e-10:
@@ -30,11 +41,13 @@ def check_fundamental_epipolar_constraint(
 ):
     # Check the epipolar constraint for each pair of points
     # "The fundamental matrix satisfies the condition that for any pair of corresponding points x ↔ x′ in the two images x′TFx = 0." - HZ book
-    for x1, x2, i in zip(points_0, points_1, range(len(points_0))):
-        epipolar_constraint = x2.T @ fundamental @ x1
-        print(
-            f"Epipolar constraint for point pair {i}: {epipolar_constraint} - should be 0"
-        )  # check the units here - is this pixels or mm?
+    constraint_values = np.array([x2.T @ fundamental @ x1 for x1, x2 in zip(points_0, points_1)])
+    print("Epipolar constraint statistics, should be near 0:")
+    print(f"Epipolar constraint mean: {np.mean(constraint_values)}")
+    print(f"Epipolar constraint median: {np.median(constraint_values)}")
+    print(f"Epipolar constraint std: {np.std(constraint_values)}")
+    print(f"Epipolar constraint max: {np.max(constraint_values)} at {np.argmax(constraint_values)}")
+    print(f"Epipolar constraint min: {np.min(constraint_values)} at {np.argmin(constraint_values)}")
 
 
 def draw_lines(image: np.ndarray, lines: np.ndarray, points: np.ndarray):
@@ -90,7 +103,6 @@ def fundamental_from_essential(
     """
     'The relationship between the fundamental and essential matrices is E = K`^TFK' - HZ book
     """
-    # TODO: Test
     return (
         np.linalg.inv(camera_1_instrinsic).T
         @ essential
@@ -98,13 +110,13 @@ def fundamental_from_essential(
     )
 
 
-def fundamental_from_camera_pair(cam_0: Camera, cam_1: Camera) -> np.ndarray:
+def fundamental_from_camera_pair(camera_0: Camera, camera_1: Camera) -> np.ndarray:
     relative_rotation, relative_translation = (
         calculate_relative_rotation_and_translation(
-            cam_0.rotation,
-            cam_0.translation,
-            cam_1.rotation,
-            cam_1.translation,
+            camera_0.rotation,
+            camera_0.translation,
+            camera_1.rotation,
+            camera_1.translation,
         )
     )
 
@@ -113,7 +125,7 @@ def fundamental_from_camera_pair(cam_0: Camera, cam_1: Camera) -> np.ndarray:
     )
 
     fundamental = fundamental_from_essential(
-        cam_0.intrinsic, cam_1.intrinsic, essential
+        camera_0.intrinsic, camera_1.intrinsic, essential
     )
 
     print(f"fundamental: {fundamental}")
@@ -176,6 +188,22 @@ def get_frame(camera: Camera, active_frame: int):
     return image
 
 
+def draw_and_display_lines(
+    image_a: np.ndarray,
+    image_b: np.ndarray,
+    image_a_points: np.ndarray,
+    image_b_points: np.ndarray,
+    image_a_lines: np.ndarray,
+    image_b_lines: np.ndarray,
+):
+    image_1_with_lines = draw_lines(image_a.copy(), image_a_lines, image_a_points)
+    image_0_with_lines = draw_lines(image_b.copy(), image_b_lines, image_b_points)
+
+    display_frames(
+        frames={"image_0": image_0_with_lines, "image_1": image_1_with_lines}
+    )
+
+
 if __name__ == "__main__":
     path_to_calibration_toml = (
         Path(__file__).parent
@@ -187,54 +215,46 @@ if __name__ == "__main__":
     a_index = 0
     b_index = 2
 
-    cam_a = camera_collection.by_id(id_list[a_index])
-    cam_b = camera_collection.by_id(id_list[b_index])
+    camera_a = camera_collection.by_id(id_list[a_index])
+    camera_b = camera_collection.by_id(id_list[b_index])
 
-    fundamental = fundamental_from_camera_pair(cam_a, cam_b)
+    fundamental = fundamental_from_camera_pair(camera_a, camera_b)
 
     # Get image points:
     body_data_path = "/Users/philipqueen/Documents/GitHub/multiperson/multiperson/assets/sample_data/2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
     body_data_cams_frame_points_xy = np.load(body_data_path)
-
-    print(
-        f"body_data_cams_frame_points_xy.shape: {body_data_cams_frame_points_xy.shape}"
-    )
 
     # Everything above this only has to happen once per pair of cameras
     # Everything below this will have to happen per frame
 
     active_frame = 500
 
-    image_a = get_frame(cam_a, active_frame)
-    image_b = get_frame(cam_b, active_frame)
+    image_a = get_frame(camera_a, active_frame)
+    image_b = get_frame(camera_b, active_frame)
 
-    image_0_points = body_data_cams_frame_points_xy[a_index, active_frame, :33, :2]
-    image_1_points = body_data_cams_frame_points_xy[b_index, active_frame, :33, :2]
+    image_a_points = homogenize_points(
+        body_data_cams_frame_points_xy[a_index, active_frame, :33, :2]
+    )
+    image_b_points = homogenize_points(
+        body_data_cams_frame_points_xy[b_index, active_frame, :33, :2]
+    )
 
-    # Make sure points are homogenous
-    image_0_points = homogenize_points(image_0_points)
-    image_1_points = homogenize_points(image_1_points)
+    check_fundamental_epipolar_constraint(fundamental, image_a_points, image_b_points)
 
-    print(f"image_0_points.shape: {image_0_points.shape}")
-    print(f"image_1_points.shape: {image_1_points.shape}")
+    image_b_lines = calculate_epipolar_lines(fundamental, image_a_points)
+    image_a_lines = calculate_epipolar_lines(fundamental.T, image_b_points)
 
-    check_fundamental_epipolar_constraint(fundamental, image_0_points, image_1_points)
+    distance_a = calculate_distance_to_lines(image_a_points, image_a_lines)
+    distance_b = calculate_distance_to_lines(image_b_points, image_b_lines)
 
-    image_1_lines = calculate_epipolar_lines(fundamental, image_0_points)
-    image_0_lines = calculate_epipolar_lines(fundamental.T, image_1_points)
+    print(f"distance_a average: {np.mean(distance_a)}")
+    print(f"distance_b average: {np.mean(distance_b)}")
 
-    distance_0 = calculate_distance_to_lines(image_0_points, image_0_lines)
-    distance_1 = calculate_distance_to_lines(image_1_points, image_1_lines)
-
-    print(f"distance_0 average: {np.mean(distance_0)}")
-    print(f"distance_1 average: {np.mean(distance_1)}")
-
-    print(f"image_1_lines.shape: {image_1_lines.shape}")
-    print(f"image_0_lines.shape: {image_0_lines.shape}")
-
-    image_1_with_lines = draw_lines(image_a.copy(), image_0_lines, image_0_points)
-    image_0_with_lines = draw_lines(image_b.copy(), image_1_lines, image_1_points)
-
-    display_frames(
-        frames={"image_0": image_0_with_lines, "image_1": image_1_with_lines}
+    draw_and_display_lines(
+        image_a,
+        image_b,
+        image_a_points,
+        image_b_points,
+        image_a_lines,
+        image_b_lines,
     )
