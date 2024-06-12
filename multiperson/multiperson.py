@@ -153,10 +153,16 @@ def homogenize_points(image_points: np.ndarray) -> np.ndarray:
 
 
 def calculate_distance_to_lines(points: np.ndarray, lines: np.ndarray) -> np.ndarray:
+    """
+    Calculate Euclidian distance from points to respective lines.
+    Return nan value if denominator is 0.
+    """
+    if points.shape != lines.T.shape:
+        raise ValueError("Points and lines must have the same shape")
+
     # Calculates the absolute value of (a*x + b*y + c), then divides by the square root of the square
-    # TODO: Test
     numerators = np.abs(np.sum(points * lines.T, axis=1))
-    denominators = np.sqrt(np.sum(lines[:2, :] ** 2, axis=0))
+    denominators = np.sqrt(np.sum(lines[:2, :] ** 2, axis=0))  # as long as we normalize the lines, should always be 1s
 
     return numerators / denominators
 
@@ -247,8 +253,8 @@ if __name__ == "__main__":
     distance_a = calculate_distance_to_lines(image_a_points, image_a_lines)
     distance_b = calculate_distance_to_lines(image_b_points, image_b_lines)
 
-    print(f"distance_a average: {np.mean(distance_a)}")
-    print(f"distance_b average: {np.mean(distance_b)}")
+    print(f"distance_a average: {np.nanmean(distance_a)}")
+    print(f"distance_b average: {np.nanmean(distance_b)}")
 
     draw_and_display_lines(
         image_a,
