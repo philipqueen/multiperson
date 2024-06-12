@@ -19,7 +19,7 @@ def test_edge_case_on_the_line():
 def test_invalid_input():
     points = homogenize_points(np.array([[1, 1], [2, 2]]))
     lines = np.array([[1, -1, 0]]).T
-    with pytest.raises(ValueError, match="Points and lines must have the same shape"):
+    with pytest.raises(ValueError, match="Points and lines must have transposed shapes (N, M) and (M, N)"):
         calculate_distance_to_lines(points, lines)
 
 @pytest.mark.filterwarnings("ignore:invalid value")

@@ -4,7 +4,7 @@ import numpy as np
 from pathlib import Path
 
 from data_models.camera_collection import CameraCollection, Camera
-from utilities.get_synchronized_frames import display_frames
+from utilities.get_synchronized_frames import display_frames, get_synchronized_frames
 
 
 def check_fundamental_properties(fundamental: np.ndarray) -> None:
@@ -158,7 +158,7 @@ def calculate_distance_to_lines(points: np.ndarray, lines: np.ndarray) -> np.nda
     Return nan value if denominator is 0.
     """
     if points.shape != lines.T.shape:
-        raise ValueError("Points and lines must have the same shape")
+        raise ValueError("Points and lines must have transposed shapes (N, M) and (M, N)")
 
     # Calculates the absolute value of (a*x + b*y + c), then divides by the square root of the square
     numerators = np.abs(np.sum(points * lines.T, axis=1))
@@ -185,7 +185,21 @@ def calculate_relative_rotation_and_translation(
     return relative_rotation, relative_translation
 
 
-def get_frame(camera: Camera, active_frame: int):
+def get_frames(cameras: list[Camera], active_frame: int) -> list[np.ndarray]:
+    """
+    This will obviously look very different in practice
+    """
+    if active_frame == 500: # use cached values
+        frames = [get_saved_frame(camera, active_frame) for camera in cameras]
+    else:
+        video_path = Path("/Users/philipqueen/freemocap_data/recording_sessions/freemocap_sample_data/synchronized_videos/")
+        synchronized_frames = get_synchronized_frames(video_path, active_frame)
+        key_map = {Path(filename).stem: filename for filename in synchronized_frames.keys()}
+        frames = [synchronized_frames[key_map[camera.name]] for camera in cameras]
+
+    return frames
+
+def get_saved_frame(camera: Camera, active_frame: int):
     """
     This will obviously look very different in practice
     """
@@ -233,10 +247,9 @@ if __name__ == "__main__":
     # Everything above this only has to happen once per pair of cameras
     # Everything below this will have to happen per frame
 
-    active_frame = 500
+    active_frame = 200  # use 500 for cached data
 
-    image_a = get_frame(camera_a, active_frame)
-    image_b = get_frame(camera_b, active_frame)
+    image_a, image_b = get_frames([camera_a, camera_b], active_frame)
 
     image_a_points = homogenize_points(
         body_data_cams_frame_points_xy[a_index, active_frame, :33, :2]
