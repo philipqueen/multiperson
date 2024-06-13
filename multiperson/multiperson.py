@@ -81,7 +81,9 @@ def calculate_epipolar_lines(
 def essential_from_rotation_and_translation(
     rotation: np.ndarray, translation: np.ndarray
 ) -> np.ndarray:
-    # TODO: Test
+    print("rotation:", rotation.tolist())
+    print("translation:", translation.tolist())
+    print("essential:", (skew_symmetric_matrix_from_vector(translation) @ rotation).tolist())
     return skew_symmetric_matrix_from_vector(translation) @ rotation
 
 
@@ -230,8 +232,8 @@ if __name__ == "__main__":
     camera_collection = CameraCollection.from_file(path_to_calibration_toml)
 
     id_list = camera_collection.ids
-    a_index = 0
-    b_index = 2
+    a_index = 2
+    b_index = 0
 
     camera_a = camera_collection.by_id(id_list[a_index])
     camera_b = camera_collection.by_id(id_list[b_index])
@@ -245,7 +247,7 @@ if __name__ == "__main__":
     # Everything above this only has to happen once per pair of cameras
     # Everything below this will have to happen per frame
 
-    active_frame = 200  # use 500 for cached data
+    active_frame = 500  # use 500 for cached data
 
     image_a, image_b = get_frames([camera_a, camera_b], active_frame)
 
