@@ -70,7 +70,6 @@ def calculate_epipolar_lines(
     Lines are represent in standard form, ax + by + c = 0, where a, b, and c are the first dimension of the output array.
     The lines represent matching points for the input points in the other image view, so points from image 0 give line sin image 1 and vice versa.
     """
-    # TODO: Test (potentially compare to opencv's function cv2.computeCorrespondEpilines)
 
     lines = fundamental_matrix @ points.T
     normalized_lines = lines / np.linalg.norm(lines[:2], axis=0)
@@ -81,9 +80,6 @@ def calculate_epipolar_lines(
 def essential_from_rotation_and_translation(
     rotation: np.ndarray, translation: np.ndarray
 ) -> np.ndarray:
-    print("rotation:", rotation.tolist())
-    print("translation:", translation.tolist())
-    print("essential:", (skew_symmetric_matrix_from_vector(translation) @ rotation).tolist())
     return skew_symmetric_matrix_from_vector(translation) @ rotation
 
 
@@ -232,8 +228,8 @@ if __name__ == "__main__":
     camera_collection = CameraCollection.from_file(path_to_calibration_toml)
 
     id_list = camera_collection.ids
-    a_index = 2
-    b_index = 0
+    a_index = 1
+    b_index = 2
 
     camera_a = camera_collection.by_id(id_list[a_index])
     camera_b = camera_collection.by_id(id_list[b_index])

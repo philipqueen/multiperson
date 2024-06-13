@@ -5,7 +5,7 @@ from multiperson.multiperson import (
 )
 
 
-def test_essential_from_rotation_and_translation():
+def test_essential_from_rotation_and_translation_case_1():
     rotation = np.array(
         [
             [0.20675307718182576, 0.4531800366089544, -0.8671107308152476],
@@ -27,6 +27,8 @@ def test_essential_from_rotation_and_translation():
         expected_essential,
     )
 
+
+def test_essential_from_rotation_and_translation_case_2():
     rotation = np.array(
         [
             [0.7928001064567758, 0.1584455723227262, -0.5885261182084011],
@@ -49,7 +51,7 @@ def test_essential_from_rotation_and_translation():
     )
 
 
-def test_skew_symmetric_matrix_from_vector():
+def test_skew_symmetric_matrix_from_vector_case_1():
     vector = np.array([1, 2, 3])
     expected_matrix = np.array(
         [
@@ -60,6 +62,8 @@ def test_skew_symmetric_matrix_from_vector():
     )
     assert np.allclose(skew_symmetric_matrix_from_vector(vector), expected_matrix)
 
+
+def test_skew_symmetric_matrix_from_vector_case_2():
     vector = np.array([-6.07, 2.92, 5.04])
     expected_matrix = np.array(
         [

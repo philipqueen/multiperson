@@ -23,7 +23,7 @@ def test_invalid_input():
     with pytest.raises(ValueError, match=re.escape("Points and lines must have transposed shapes (N, M) and (M, N)")):
         calculate_distance_to_lines(points, lines)
 
-@pytest.mark.filterwarnings("ignore:invalid value")
+@pytest.mark.filterwarnings("ignore:invalid value")  # suppresses division by zero warning
 def test_zero_denominator():
     points = homogenize_points(np.array([[2, 2], [1, 1], [3, 3]]))
     lines = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]).T
