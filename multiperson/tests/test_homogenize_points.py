@@ -2,8 +2,9 @@ import re
 import numpy as np
 import pytest
 
+from multiperson.geometry.homogenize_points import homogenize_points
 
-from multiperson.multiperson import homogenize_points
+
 
 
 def testhomogenize_2d_points():

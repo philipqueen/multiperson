@@ -1,6 +1,6 @@
 import numpy as np
 
-from multiperson.multiperson import calculate_relative_rotation_and_translation
+from multiperson.geometry.epipolar_geometry import calculate_relative_rotation_and_translation
 
 
 def test_identity_rotation_and_zero_translation():

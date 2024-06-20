@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
-from multiperson.multiperson import fundamental_from_essential, check_fundamental_properties
+
+from multiperson.geometry.epipolar_geometry import check_fundamental_properties, fundamental_from_essential
+
 
 
 def test_check_fundamental_properties_rank_1():

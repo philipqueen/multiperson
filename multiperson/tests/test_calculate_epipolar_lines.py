@@ -1,7 +1,7 @@
 import numpy as np
 
 
-from multiperson.multiperson import calculate_epipolar_lines
+from multiperson.main import calculate_epipolar_lines
 
 
 def test_calculate_epipolar_lines_case_1():

@@ -1,8 +1,6 @@
 import numpy as np
-from multiperson.multiperson import (
-    skew_symmetric_matrix_from_vector,
-    essential_from_rotation_and_translation,
-)
+
+from multiperson.geometry.epipolar_geometry import essential_from_rotation_and_translation, skew_symmetric_matrix_from_vector
 
 
 def test_essential_from_rotation_and_translation_case_1():

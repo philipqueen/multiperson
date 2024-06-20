@@ -1,7 +1,10 @@
 import re
 import numpy as np
 import pytest
-from multiperson.multiperson import calculate_distance_to_lines, homogenize_points
+
+from multiperson.geometry.calculate_distance_to_lines import calculate_distance_to_lines
+from multiperson.geometry.homogenize_points import homogenize_points
+
 
 def test_basic_functionality():
     points = homogenize_points(np.array([[1, 2], [2, 4], [3, 6]]))

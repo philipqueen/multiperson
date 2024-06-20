@@ -2,7 +2,8 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-from utilities.get_video_paths import get_video_paths
+from multiperson.utilities.display import display_frames
+from multiperson.utilities.get_video_paths import get_video_paths
 
 def get_synchronized_frames(
     video_folder_path: str | Path,
@@ -31,14 +32,6 @@ def get_synchronized_frames(
         cap.release()
 
     return frames
-
-def display_frames(frames: dict[str, np.ndarray]):
-    frame_group = tuple(frame for frame in frames.values())
-
-    combined_frame = np.concatenate(frame_group, axis=1)
-
-    cv2.imshow("Synchronized Frames", combined_frame)
-    cv2.waitKey(0)
 
 def save_frames(frames: dict[str, np.ndarray], frame_number: int):
     for frame_path, frame in frames.items():
