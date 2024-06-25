@@ -6,8 +6,9 @@ from utilities.read_calibration_toml import read_calibration_toml
 
 
 class Camera:
-    def __init__(self, id: str, name: str, intrinsic: np.ndarray, rotation: np.ndarray, translation: np.ndarray):
+    def __init__(self, id: str, index: int, name: str, intrinsic: np.ndarray, rotation: np.ndarray, translation: np.ndarray):
         self.id = id
+        self.index = index
         self.name = name
         self.intrinsic = intrinsic
         self.rotation = rotation
@@ -16,6 +17,10 @@ class Camera:
 class CameraCollection:
     def __init__(self, cameras: list[Camera]):
         self.cameras = cameras
+
+    @property
+    def indexes(self):
+        return [camera.index for camera in self.cameras]
 
     @property
     def ids(self):
@@ -37,6 +42,7 @@ class CameraCollection:
             [
                 Camera(
                     id=key,
+                    index=calibration[key]["index"],
                     name=calibration[key]["name"],
                     intrinsic=calibration[key]["instrinsics_matrix"],
                     rotation=calibration[key]["rotation"],
@@ -51,3 +57,9 @@ class CameraCollection:
             if camera.id == camera_id:  # ids are guaranteed to be unique IF class is initialized from a dict
                 return camera
         raise ValueError(f"Camera with id {camera_id} not found in CameraCollection")
+    
+    def by_index(self, camera_index: int) -> Camera:
+        for camera in self.cameras:
+            if camera.index == camera_index:
+                return camera
+        raise ValueError(f"Camera with index {camera_index} not found in CameraCollection")

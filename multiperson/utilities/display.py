@@ -36,9 +36,9 @@ def draw_and_display_lines(
     image_a_lines: np.ndarray,
     image_b_lines: np.ndarray,
 ):
-    image_1_with_lines = draw_lines(image_a.copy(), image_a_lines, image_a_points)
-    image_0_with_lines = draw_lines(image_b.copy(), image_b_lines, image_b_points)
+    image_a_with_lines = draw_lines(image_a.copy(), image_a_lines, image_a_points)
+    image_b_with_lines = draw_lines(image_b.copy(), image_b_lines, image_b_points)
 
     display_frames(
-        frames={"image_0": image_0_with_lines, "image_1": image_1_with_lines}
+        frames={"image_a": image_a_with_lines, "image_b": image_b_with_lines}
     )

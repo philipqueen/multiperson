@@ -4,9 +4,10 @@ from pathlib import Path
 
 from multiperson.data_models.camera_collection import CameraCollection, Camera
 from multiperson.geometry.calculate_distance_to_lines import calculate_distance_to_lines
-from multiperson.geometry.epipolar_geometry import calculate_epipolar_lines, check_fundamental_epipolar_constraint, draw_lines, fundamental_from_camera_pair
-from multiperson.geometry.homogenize_points import homogenize_points
-from multiperson.utilities.get_synchronized_frames import display_frames, get_synchronized_frames
+from multiperson.geometry.epipolar_geometry import calculate_epipolar_lines, check_fundamental_epipolar_constraint, fundamental_from_camera_pair
+from multiperson.geometry.homogenize_points import homogenize_single_frame_points
+from multiperson.utilities.display import draw_and_display_lines
+from multiperson.utilities.video_io import get_synchronized_frames
 
 
 def get_frames(cameras: list[Camera], active_frame: int, video_path: Path) -> list[np.ndarray]:
@@ -65,10 +66,10 @@ if __name__ == "__main__":
 
     image_a, image_b = get_frames([camera_a, camera_b], active_frame, video_path)
 
-    image_a_points = homogenize_points(
+    image_a_points = homogenize_single_frame_points(
         body_data_cams_frame_points_xy[a_index, active_frame, :number_of_tracked_points, :2]
     )
-    image_b_points = homogenize_points(
+    image_b_points = homogenize_single_frame_points(
         body_data_cams_frame_points_xy[b_index, active_frame, :number_of_tracked_points, :2]
     )
 

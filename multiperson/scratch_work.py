@@ -64,3 +64,45 @@ def fundamental_from_projections(P1: np.ndarray, P2: np.ndarray) -> np.ndarray:
             fundamental[i, j] = np.linalg.det(xy_matrix)
 
     return fundamental
+
+
+point_to_lines_distances = []
+for i in range(self.num_objects):
+    for j in range(self.num_objects):
+        distance = np.nanmean(calculate_distance_to_lines(
+            image_b_points_by_object[i], image_b_lines_by_object[j]
+        ))
+        point_to_lines_distances.append((i, j, distance))
+
+print(f"frame: {self.current_frame}")
+
+ordering = self._order_by_distances_greedy(point_to_lines_distances)
+
+def _order_by_distances_greedy(self, distances: List[Tuple[int, int, float]]) -> List[int]:
+    """
+    Make an ordering based on the distances between points.
+    An ordering is a list of integers in the range [0, self.num_objects) mapping points to lines.
+    Each point is mapped to the line with the smallest distance, but each line is only mapped to one point.
+    Algorithm proceeds greedily, taking the closest match first.
+    """
+    # TODO: Currently, this works on simple test cases, but needs testing and optimization
+    # This can be done "optimally" with the Hungarian algorithm, but this method is greedy to match the closest options first
+    # The problem class is called the "Linear Assignment Problem"
+
+    # sort by distance value
+    distances.sort(key=lambda x: x[2])
+
+    selected_points = set()
+    selected_lines = set()
+    ordering = [-1] * self.num_objects
+
+    for point, line, _distance in distances:
+        if point not in selected_points and line not in selected_lines:
+            ordering[point] = line
+            selected_points.add(point)
+            selected_lines.add(line)
+
+        if len(selected_points) == self.num_objects:
+            break
+
+    return ordering
