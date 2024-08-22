@@ -120,6 +120,7 @@ def calculate_relative_rotation_and_translation(
 
 
 def fundamental_from_camera_pair(camera_0: Camera, camera_1: Camera) -> np.ndarray:
+    # TODO: See if Singular Value Thresholding as a denoise method could help here
     relative_rotation, relative_translation = (
         calculate_relative_rotation_and_translation(
             camera_0.rotation,

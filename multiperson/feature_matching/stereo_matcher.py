@@ -1,10 +1,10 @@
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Tuple, Union
 
 import cv2
 import numpy as np
 from scipy.optimize import linear_sum_assignment
-from multiperson.data_models.camera_collection import Camera, CameraCollection
+from multiperson.data_models.camera_collection import CameraCollection
 from multiperson.geometry.calculate_distance_to_lines import calculate_distance_to_lines
 from multiperson.geometry.epipolar_geometry import (
     calculate_epipolar_lines,
@@ -82,10 +82,10 @@ class StereoMatcher:
                 self.fundamental.T, matched_image_b_points
             )
 
-            original_a = draw_lines(frame_a, image_a_lines, current_points_a)
-            original_b = draw_lines(frame_b, image_b_lines, current_points_b)
-            matched_a = draw_lines(frame_a, matched_image_a_lines, current_points_a)
-            matched_b = draw_lines(frame_b, image_b_lines, matched_image_b_points)
+            original_a = draw_lines(frame_a, image_a_lines, current_points_a, points_per_object=points_per_object)
+            original_b = draw_lines(frame_b, image_b_lines, current_points_b, points_per_object=points_per_object)
+            matched_a = draw_lines(frame_a, matched_image_a_lines, current_points_a, points_per_object=points_per_object)
+            matched_b = draw_lines(frame_b, image_b_lines, matched_image_b_points, points_per_object=points_per_object)
 
             self.add_frames(
                 video_writer, original_a, original_b, matched_a, matched_b, swapped
@@ -121,7 +121,16 @@ class StereoMatcher:
                 )
         ordering = self._order_by_distances_optimal(point_to_lines_distances)
 
-        matched_image_b_points = np.take(image_b_points, ordering, axis=0)
+        reordered_image_b_points_by_object = [
+            image_b_points_by_object[i] for i in ordering
+        ]
+
+        # TODO: this doesn't work with more than 1 point per object
+        # matched_image_b_points = np.take(image_b_points, ordering, axis=0)
+
+        matched_image_b_points = np.concatenate(
+            reordered_image_b_points_by_object, axis=0
+        )
 
         return matched_image_b_points
 
@@ -185,7 +194,9 @@ class StereoMatcher:
         frame = np.concatenate((top_frame, bottom_frame), axis=0)
 
         if swapped:
-            frame = cv2.circle(frame, (frame.shape[1] // 2, frame.shape[0] // 2), 10, (0, 0, 255), -1)
+            frame = cv2.circle(
+                frame, (frame.shape[1] // 2, frame.shape[0] // 2), 10, (0, 0, 255), -1
+            )
 
         video_writer.write(cv2.resize(frame, (1440, 1080)))
 
@@ -213,33 +224,67 @@ class StereoMatcher:
 
 
 if __name__ == "__main__":
-    path_to_calibration_toml = Path(
-        "/Users/philipqueen/freemocap_data/recording_sessions/2_brightest_points_2_cams/recording_14_30_34_gmt-6_calibration/recording_14_30_34_gmt-6_calibration_camera_calibration.toml"
-    )
-    camera_collection = CameraCollection.from_file(path_to_calibration_toml)
-
-    # video_path = Path("/Users/philipqueen/freemocap_data/recording_sessions/freemocap_sample_data/synchronized_videos/")
-    video_path = Path(
-        "/Users/philipqueen/freemocap_data/recording_sessions/2_brightest_points_2_cams/simple_test/synchronized_videos/"
-    )
+    # Brightest Point Definitions
+    # path_to_calibration_toml = Path(
+    #     "/Users/philipqueen/freemocap_data/recording_sessions/2_brightest_points_2_cams/recording_14_30_34_gmt-6_calibration/recording_14_30_34_gmt-6_calibration_camera_calibration.toml"
+    # )
+    # points_per_object = 1
+    # simple:
+    # video_path = Path(
+    #     "/Users/philipqueen/freemocap_data/recording_sessions/2_brightest_points_2_cams/simple_test/synchronized_videos/"
+    # )
+    # body_data_path = Path(
+    #     "/Users/philipqueen/freemocap_data/recording_sessions/2_brightest_points_2_cams/simple_test/output_data/raw_data/brightestPoint2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
+    # )
+    # complex:
     # video_path = Path(
     #     "/Users/philipqueen/freemocap_data/recording_sessions/2_brightest_points_2_cams/complex_test/synchronized_videos/"
     # )
+    # body_data_path = Path(
+    #     "/Users/philipqueen/freemocap_data/recording_sessions/2_brightest_points_2_cams/complex_test/output_data/raw_data/brightestPoint2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
+    # )
+
+    # Sample Data
+    # video_path = Path("/Users/philipqueen/freemocap_data/recording_sessions/freemocap_sample_data/synchronized_videos/")
+    # body_data_path = "/Users/philipqueen/Documents/GitHub/multiperson/multiperson/assets/sample_data/2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
+    # points_per_object = 533
+
+    # Multiperson Definitions
+    path_to_calibration_toml = Path(
+        "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_07_36/recording_15_13_46_gmt-4_calibration/recording_15_13_46_gmt-4_calibration_camera_calibration.toml"
+    )
+    points_per_object = 17
+
+    # # no contact:
+    video_path = Path(
+        "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_22_35_gmt-4__multiperson_no_contact/synchronized_videos/"
+    )
+    body_data_path = Path(
+        "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_22_35_gmt-4__multiperson_no_contact/output_data/raw_data/yolo2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
+    )
+
+    # # crossing behind:
+    # video_path = Path(
+    #     "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_23_37_gmt-4__multiperson_crossing_behind/synchronized_videos/"
+    # )
+    # body_data_path = Path(
+    #     "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_23_37_gmt-4__multiperson_crossing_behind/output_data/raw_data/yolo2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
+    # )
+
+    # both moving:
+    # video_path = Path(
+    #     "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_25_13_gmt-4__multiperson_both_moving/synchronized_videos/"
+    # )
+    # body_data_path = Path(
+    #     "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_25_13_gmt-4__multiperson_both_moving/output_data/raw_data/yolo2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
+    # )
+
+    camera_collection = CameraCollection.from_file(path_to_calibration_toml)
 
     a_index = 0
     b_index = 1
 
-    # points_per_object = 533
-    points_per_object = 1
-
     # Get image points:
-    # body_data_path = "/Users/philipqueen/Documents/GitHub/multiperson/multiperson/assets/sample_data/2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
-    body_data_path = Path(
-        "/Users/philipqueen/freemocap_data/recording_sessions/2_brightest_points_2_cams/simple_test/output_data/raw_data/brightestPoint2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
-    )
-    # body_data_path = Path(
-    #     "/Users/philipqueen/freemocap_data/recording_sessions/2_brightest_points_2_cams/complex_test/output_data/raw_data/brightestPoint2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
-    # )
     body_data_cams_frame_points_xy = np.load(body_data_path)
 
     matcher = StereoMatcher(

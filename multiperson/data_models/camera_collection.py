@@ -1,18 +1,19 @@
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Union
 import numpy as np
 
 from utilities.read_calibration_toml import read_calibration_toml
 
 
+@dataclass
 class Camera:
-    def __init__(self, id: str, index: int, name: str, intrinsic: np.ndarray, rotation: np.ndarray, translation: np.ndarray):
-        self.id = id
-        self.index = index
-        self.name = name
-        self.intrinsic = intrinsic
-        self.rotation = rotation
-        self.translation = translation
+    id: str
+    index: int
+    name: str
+    intrinsic: np.ndarray
+    rotation: np.ndarray
+    translation: np.ndarray
 
 class CameraCollection:
     def __init__(self, cameras: list[Camera]):

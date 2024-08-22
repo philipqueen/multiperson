@@ -10,7 +10,7 @@ def display_frames(frames: dict[str, np.ndarray]):
     cv2.imshow("Synchronized Frames", combined_frame)
     cv2.waitKey(0)
 
-def draw_lines(image: np.ndarray, lines: np.ndarray, points: np.ndarray):
+def draw_lines(image: np.ndarray, lines: np.ndarray, points: np.ndarray, points_per_object: int = 1):
     """
     Draw points and epipolar lines on an image
 
@@ -21,9 +21,14 @@ def draw_lines(image: np.ndarray, lines: np.ndarray, points: np.ndarray):
     annotated_image = image.copy()
     rows, columns = annotated_image.shape[:2]
     np.random.seed(0)
-    for rows, point in zip(lines.T, points):
+
+    num_objects = len(points) // points_per_object
+    colors = [tuple(np.random.randint(0, 255, 3).tolist()) for _ in range(num_objects)]
+
+    for index, (rows, point) in enumerate(zip(lines.T, points)):
         # print(f"rows: {rows}, point: {point}")
-        color = tuple(np.random.randint(0, 255, 3).tolist())
+        # color = tuple(np.random.randint(0, 255, 3).tolist())
+        color = colors[index // points_per_object]
         try: # TODO: better way to deal with NaNs
             x0, y0 = map(int, [0, -rows[2] / rows[1]])
             x1, y1 = map(int, [columns, -(rows[2] + rows[0] * columns) / rows[1]])
