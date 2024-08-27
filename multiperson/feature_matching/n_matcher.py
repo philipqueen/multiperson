@@ -43,46 +43,91 @@ class NMatcher:
         for frame_number in range(self.num_frames):
             # construct our mega cost matrix
             # print(f"frame {frame_number}")
-            array_of_cost_matrices = self._create_cost_matrix_array(
+            total_cost_matrix_array = self._create_cost_matrix_array(
                 pair_to_stereo_matcher_map, frame_number
             )
 
-            print(array_of_cost_matrices)
+            print(total_cost_matrix_array)
 
             # play funny hungarian algorithm game
-            ordering = self._order_by_costs_optimal(array_of_cost_matrices[0, 0])
-            ordering_list = [ordering]
+            # TODO: this loop can be greatly improved, it's definitely not starting+ending at exactly the right place
             i = 0
-            while i < (array_of_cost_matrices.shape[0] - 1):
-                lower_bound = i * self.num_objects
-                upper_bound = lower_bound + self.num_objects
-                array_of_cost_matrices[lower_bound:upper_bound, lower_bound:upper_bound] = self._reorder_cost_matrix_columns(
-                    cost_matrix=array_of_cost_matrices[lower_bound:upper_bound, lower_bound:upper_bound], ordering=ordering
+            lower_bound = 0
+            upper_bound = self.num_objects
+            ordering = self._order_by_costs_optimal(
+                total_cost_matrix_array[
+                    lower_bound:upper_bound, lower_bound:upper_bound
+                ]
+            )
+            ordering_list = [ordering]
+            while i < (self.camera_collection.size - 1):
+                print(lower_bound, upper_bound)
+                total_cost_matrix_array[
+                    lower_bound:upper_bound, lower_bound:upper_bound
+                ] = self._reorder_cost_matrix_columns(
+                    cost_matrix=total_cost_matrix_array[
+                        lower_bound:upper_bound, lower_bound:upper_bound
+                    ],
+                    ordering=ordering,
                 )
 
                 i += 1
-                for j in range(i, array_of_cost_matrices.shape[0]):
-                    array_of_cost_matrices[i, j] = self._reorder_cost_matrix_rows(
-                        cost_matrix=array_of_cost_matrices[i, j], ordering=ordering
+                lower_bound = i * self.num_objects
+                upper_bound = lower_bound + self.num_objects
+
+                # apply ordering across camera i's row, and add each reordered matrix to the corresponding matrix in camera 0's row
+                for j in range(i, self.camera_collection.size - 1):
+                    temp_lower = j * self.num_objects
+                    temp_upper = temp_lower + self.num_objects
+                    print(
+                        f"temp bounds for j={j}: lower {temp_lower}, upper {temp_upper}"
+                    )
+                    total_cost_matrix_array[
+                        lower_bound:upper_bound, temp_lower:temp_upper
+                    ] = self._reorder_cost_matrix_rows(
+                        cost_matrix=total_cost_matrix_array[
+                            lower_bound:upper_bound, temp_lower:temp_upper
+                        ],
+                        ordering=ordering,
+                    )
+                    total_cost_matrix_array[
+                        0 : self.num_objects, temp_lower:temp_upper
+                    ] = self._normalize_and_add_cost_matrices(
+                        first_matrix=total_cost_matrix_array[
+                            0 : self.num_objects, temp_lower:temp_upper
+                        ],
+                        second_matrix=total_cost_matrix_array[
+                            lower_bound:upper_bound, temp_lower:temp_upper
+                        ],
                     )
 
-                array_of_cost_matrices[0, i] = self._normalize_and_add_cost_matrices(
-                    first_matrix=array_of_cost_matrices[0, i],
-                    second_matrix=array_of_cost_matrices[i, i],
+                ordering = self._order_by_costs_optimal(
+                    total_cost_matrix_array[
+                        lower_bound:upper_bound, lower_bound:upper_bound
+                    ]
                 )
+                if (
+                    len(ordering) > 0
+                ):  # TODO: figure out why these array changes added an empty list
+                    ordering_list.append(ordering)
 
-                ordering = self._order_by_costs_optimal(array_of_cost_matrices[i, i])
-                ordering_list.append(ordering)
-
-            print(array_of_cost_matrices[0, :])
+            print(total_cost_matrix_array[0 : self.num_objects, :])
             print(ordering_list)
+
+            self._reorder_data_by_ordering_list(frame_number, ordering_list)
+
+    def _reorder_data_by_ordering_list(self, frame_number, ordering_list):
+        for index, ordering in enumerate(ordering_list):
+            index += 1  # we start reordering camera 1, so enumerate is off by 1
+            self._reorder_points(
+                    camera=index, frame=frame_number, ordering=ordering
+                )
 
     def _create_cost_matrix_array(
         self,
         pair_to_stereo_matcher_map: Dict[Tuple[int, int], StereoMatcher],
         frame_number: int,
     ) -> np.ndarray:
-        # TODO: replace this array of arrays shenanigans with a big array, and do rest with broadcasting
         array_size = (self.camera_collection.size - 1) * self.num_objects
         cost_matrix_array = np.full((array_size, array_size), fill_value=np.nan)
 
@@ -93,21 +138,37 @@ class NMatcher:
                 (pair[1] - 1) * self.num_objects : pair[1] * self.num_objects,
             ] = cost_matrix  # columns offset by 1 because first column is camera 1
 
-        print(cost_matrix_array)
+        return cost_matrix_array
 
-        array_of_cost_matrices = np.full(
-            (self.camera_collection.size - 1, self.camera_collection.size - 1),
-            fill_value=np.nan,
-            dtype=object,
+        # array_of_cost_matrices = np.full(
+        #     (self.camera_collection.size - 1, self.camera_collection.size - 1),
+        #     fill_value=np.nan,
+        #     dtype=object,
+        # )
+
+        # for pair, matcher in pair_to_stereo_matcher_map.items():
+        #     cost_matrix = matcher.match_by_frame_number(frame_number)
+        #     array_of_cost_matrices[pair[0], pair[1] - 1] = (
+        #         cost_matrix  # columns offset by 1 because first column is camera 1
+        #     )
+
+        # return array_of_cost_matrices
+
+    def _reorder_points(self, camera: int, frame: int, ordering: List[int]) -> None:
+        """
+        Given an ordering, reorder list of points by object and collapse back to single array of matched points.
+        Operation happens in place.
+        """
+
+        points_by_object = np.split(
+            self.data_cams_frame_points_xy[camera, frame, :], self.num_objects, axis=0
         )
 
-        for pair, matcher in pair_to_stereo_matcher_map.items():
-            cost_matrix = matcher.match_by_frame_number(frame_number)
-            array_of_cost_matrices[pair[0], pair[1] - 1] = (
-                cost_matrix  # columns offset by 1 because first column is camera 1
-            )
+        reordered_points_by_object = [points_by_object[i] for i in ordering]
 
-        return array_of_cost_matrices
+        matched_points = np.concatenate(reordered_points_by_object, axis=0)
+
+        self.data_cams_frame_points_xy[camera, frame, :] = matched_points
 
     def _generate_camera_pairs(self) -> List[Tuple[int, int]]:
         """
