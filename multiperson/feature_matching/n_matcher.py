@@ -37,49 +37,27 @@ class NMatcher:
         """
         Matches features across all cameras
         """
-        # generate all valid camera pairs
-        camera_pairs = [
-            (pair[0].index, pair[1].index)
-            for pair in combinations(self.camera_collection.cameras, 2)
-        ]
-        print(f"Number of cameras: {self.camera_collection.size}")
-        print(f"Number of pairs: {len(camera_pairs)}")
-        print(f"Pairs: {camera_pairs}")
-
-        # setup list of stereo matchers for each pair
-        pairs_to_matcher_map: Dict[Tuple[int, int], StereoMatcher] = {}
-        for pair in camera_pairs:
-            pairs_to_matcher_map[pair] = StereoMatcher(
-                self.camera_collection,
-                pair[0],
-                pair[1],
-                self.data_cams_frame_points_xy,
-                self.synchronized_video_folder_path,
-                self.num_objects,
-            )
+        # setup list of stereo matchers for each pair of cameras
+        pair_to_stereo_matcher_map = self._create_stereo_matchers()
 
         for frame_number in range(self.num_frames):
             # construct our mega cost matrix
             # print(f"frame {frame_number}")
-            # TODO: replace this array or arrays shenanigans with a big array, for broadcasting shenanigans
-            array_of_cost_matrices = np.full(
-                (self.camera_collection.size - 1, self.camera_collection.size - 1),
-                fill_value=np.nan,
-                dtype=object,
+            array_of_cost_matrices = self._create_cost_matrix_array(
+                pair_to_stereo_matcher_map, frame_number
             )
-            for pair, matcher in pairs_to_matcher_map.items():
-                cost_matrix = matcher.match_by_frame_number(frame_number)
-                array_of_cost_matrices[pair[0], pair[1] - 1] = cost_matrix
-            if frame_number == 289:
-                print(array_of_cost_matrices)
+
+            print(array_of_cost_matrices)
 
             # play funny hungarian algorithm game
             ordering = self._order_by_costs_optimal(array_of_cost_matrices[0, 0])
             ordering_list = [ordering]
             i = 0
             while i < (array_of_cost_matrices.shape[0] - 1):
-                array_of_cost_matrices[i, i] = self._reorder_cost_matrix_columns(
-                    cost_matrix=array_of_cost_matrices[i, i], ordering=ordering
+                lower_bound = i * self.num_objects
+                upper_bound = lower_bound + self.num_objects
+                array_of_cost_matrices[lower_bound:upper_bound, lower_bound:upper_bound] = self._reorder_cost_matrix_columns(
+                    cost_matrix=array_of_cost_matrices[lower_bound:upper_bound, lower_bound:upper_bound], ordering=ordering
                 )
 
                 i += 1
@@ -96,11 +74,71 @@ class NMatcher:
                 ordering = self._order_by_costs_optimal(array_of_cost_matrices[i, i])
                 ordering_list.append(ordering)
 
-            if frame_number == 289:
-                print(array_of_cost_matrices[0, :])
-                print(ordering_list)
+            print(array_of_cost_matrices[0, :])
+            print(ordering_list)
 
-            # rearrange data by ordering
+    def _create_cost_matrix_array(
+        self,
+        pair_to_stereo_matcher_map: Dict[Tuple[int, int], StereoMatcher],
+        frame_number: int,
+    ) -> np.ndarray:
+        # TODO: replace this array of arrays shenanigans with a big array, and do rest with broadcasting
+        array_size = (self.camera_collection.size - 1) * self.num_objects
+        cost_matrix_array = np.full((array_size, array_size), fill_value=np.nan)
+
+        for pair, matcher in pair_to_stereo_matcher_map.items():
+            cost_matrix = matcher.match_by_frame_number(frame_number)
+            cost_matrix_array[
+                pair[0] * self.num_objects : (pair[0] + 1) * self.num_objects,
+                (pair[1] - 1) * self.num_objects : pair[1] * self.num_objects,
+            ] = cost_matrix  # columns offset by 1 because first column is camera 1
+
+        print(cost_matrix_array)
+
+        array_of_cost_matrices = np.full(
+            (self.camera_collection.size - 1, self.camera_collection.size - 1),
+            fill_value=np.nan,
+            dtype=object,
+        )
+
+        for pair, matcher in pair_to_stereo_matcher_map.items():
+            cost_matrix = matcher.match_by_frame_number(frame_number)
+            array_of_cost_matrices[pair[0], pair[1] - 1] = (
+                cost_matrix  # columns offset by 1 because first column is camera 1
+            )
+
+        return array_of_cost_matrices
+
+    def _generate_camera_pairs(self) -> List[Tuple[int, int]]:
+        """
+        Generate all valid pairs of camera indices with no duplicates
+        Creates N * (N-1) / 2 pairs, where N is the number of cameras in the CameraCollection
+        """
+        return [
+            (pair[0].index, pair[1].index)
+            for pair in combinations(self.camera_collection.cameras, 2)
+        ]
+
+    def _create_stereo_matchers(self) -> Dict[Tuple[int, int], StereoMatcher]:
+        """
+        Create a StereoMatcher instance (value) for each unique camera pair (key, as a tuple), to be able to run stereo geometry calculations on.
+
+        Uses the cameras in self.camera_collection to generate the pairs.
+        """
+        camera_pairs = self._generate_camera_pairs()
+
+        pairs_to_matcher_map = {}
+        for pair in camera_pairs:
+            pairs_to_matcher_map[pair] = StereoMatcher(
+                self.camera_collection,
+                pair[0],
+                pair[1],
+                self.data_cams_frame_points_xy,
+                self.synchronized_video_folder_path,
+                self.num_objects,
+            )
+
+        return pairs_to_matcher_map
 
     def _order_by_costs_optimal(self, cost_matrix: np.ndarray) -> List[int]:
         """
@@ -115,14 +153,14 @@ class NMatcher:
     def _normalize_and_add_cost_matrices(
         self, first_matrix: np.ndarray, second_matrix: np.ndarray
     ) -> np.ndarray:
-        # TODO: normalize cost matrices
+        # TODO: normalize cost matrices by min/max or z score normalization
         return first_matrix + second_matrix
 
     def _reorder_cost_matrix_columns(
         self, cost_matrix: np.ndarray, ordering: List[int]
     ) -> np.ndarray:
         return cost_matrix[:, ordering]
-    
+
     def _reorder_cost_matrix_rows(
         self, cost_matrix: np.ndarray, ordering: List[int]
     ) -> np.ndarray:
