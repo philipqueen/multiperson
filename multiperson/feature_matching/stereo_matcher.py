@@ -22,25 +22,19 @@ class StereoMatcher:
         camera_collection: CameraCollection,
         index_a: int,
         index_b: int,
-        data_cams_frame_points_xy: np.ndarray,
-        synchronized_video_path: Union[str, Path],
-        points_per_object: int,
+        homogenized_data_cams_frame_points_xy: np.ndarray,
+        synchronized_video_folder_path: Union[str, Path],
+        num_objects: int,
     ):
         self.camera_collection = camera_collection
-        self.synchronized_video_path = Path(synchronized_video_path)
-        self.points_per_object = points_per_object
+        self.synchronized_video_folder_path = Path(synchronized_video_folder_path)
+        self.num_objects = num_objects
 
         self._validate_input_index(index_a, index_b)
         self.index_a = index_a
         self.index_b = index_b
 
-        self._validate_input_data(data_cams_frame_points_xy)
-        self.data_cams_frame_points_xy = homogenize_data_array(
-            data_cams_frame_points_xy
-        )
-        self.num_objects = (
-            self.data_cams_frame_points_xy.shape[2] // self.points_per_object
-        )
+        self.data_cams_frame_points_xy = homogenized_data_cams_frame_points_xy
 
         self.camera_a = camera_collection.by_index(self.index_a)
         self.camera_b = camera_collection.by_index(self.index_b)
@@ -48,6 +42,10 @@ class StereoMatcher:
         self.fundamental = fundamental_from_camera_pair(self.camera_a, self.camera_b)
 
     def match_videos(self) -> None:
+        """
+        Function for running standalone StereoMatcher on pair of videos.
+        Not to be used with NMatcher.
+        """
         self._load_videos()
         video_writer = self._video_writer()
 
@@ -55,16 +53,24 @@ class StereoMatcher:
             swapped = False
             frame_a, frame_b = self._next_frames()
             current_points_a = self.data_cams_frame_points_xy[
-                a_index, i, :, :
-            ].copy()  # TODO: these are probably redundant
-            current_points_b = self.data_cams_frame_points_xy[b_index, i, :, :].copy()
+                self.index_a, i, :, :
+            ].copy()  # TODO: copies are probably redundant
+            current_points_b = self.data_cams_frame_points_xy[
+                self.index_b, i, :, :
+            ].copy()
             image_b_lines = calculate_epipolar_lines(self.fundamental, current_points_a)
             image_a_lines = calculate_epipolar_lines(
                 self.fundamental.T, current_points_b
             )
 
-            matched_image_b_points = self._match_single_frame(
+            cost_matrix = self._match_single_frame(
                 current_points_a, current_points_b
+            )
+
+            current_ordering = self._order_by_costs_optimal(cost_matrix)
+
+            matched_image_b_points = self.reorder_points(
+                points=current_points_b, ordering=current_ordering
             )
 
             if not np.all(
@@ -82,16 +88,62 @@ class StereoMatcher:
                 self.fundamental.T, matched_image_b_points
             )
 
-            original_a = draw_lines(frame_a, image_a_lines, current_points_a, points_per_object=points_per_object)
-            original_b = draw_lines(frame_b, image_b_lines, current_points_b, points_per_object=points_per_object)
-            matched_a = draw_lines(frame_a, matched_image_a_lines, current_points_a, points_per_object=points_per_object)
-            matched_b = draw_lines(frame_b, image_b_lines, matched_image_b_points, points_per_object=points_per_object)
+            original_a = draw_lines(
+                frame_a,
+                image_a_lines,
+                current_points_a,
+                points_per_object=points_per_object,
+            )
+            original_b = draw_lines(
+                frame_b,
+                image_b_lines,
+                current_points_b,
+                points_per_object=points_per_object,
+            )
+            matched_a = draw_lines(
+                frame_a,
+                matched_image_a_lines,
+                current_points_a,
+                points_per_object=points_per_object,
+            )
+            matched_b = draw_lines(
+                frame_b,
+                image_b_lines,
+                matched_image_b_points,
+                points_per_object=points_per_object,
+            )
 
             self.add_frames(
-                video_writer, original_a, original_b, matched_a, matched_b, swapped
+                video_writer, [original_a, original_b, matched_a, matched_b], swapped
             )
 
         video_writer.release()
+
+    def match_by_frame_number(self, frame_number: int) -> np.ndarray:
+        """
+        Public method to get cost matrix of objects in B by distance to A for a given frame
+        """
+        points_a = self.data_cams_frame_points_xy[
+            self.index_a, frame_number, :, :
+        ].copy()  # TODO: copies are probably redundant
+        points_b = self.data_cams_frame_points_xy[
+            self.index_b, frame_number, :, :
+        ].copy()
+
+        return self._match_single_frame(points_a, points_b)
+
+    def reorder_points(self, points: np.ndarray, ordering: List[int]) -> np.ndarray:
+        """
+        Given an ordering, reorder list of points by object and collapse back to single array of matched points.
+        """
+
+        points_by_object = np.split(points, self.num_objects, axis=0)
+
+        reordered_points_by_object = [points_by_object[i] for i in ordering]
+
+        matched_points = np.concatenate(reordered_points_by_object, axis=0)
+
+        return matched_points
 
     def _match_single_frame(
         self, image_a_points: np.ndarray, image_b_points: np.ndarray
@@ -104,10 +156,11 @@ class StereoMatcher:
             image_b_points: points in image_b
 
         Returns:
-            matched_image_b_points: reordered points in image_b based on greedy matching
+            cost_matrix: matrix of objects in b by their distance to objects in a
         """
         image_b_lines = calculate_epipolar_lines(self.fundamental, image_a_points)
 
+        # seperate points and lines by object
         image_b_points_by_object = np.split(image_b_points, self.num_objects, axis=0)
         image_b_lines_by_object = np.split(image_b_lines, self.num_objects, axis=1)
 
@@ -119,34 +172,24 @@ class StereoMatcher:
                         image_b_points_by_object[i], image_b_lines_by_object[j]
                     )
                 )
-        ordering = self._order_by_distances_optimal(point_to_lines_distances)
+        return self._distances_to_cost_matrix(distances=point_to_lines_distances)
 
-        reordered_image_b_points_by_object = [
-            image_b_points_by_object[i] for i in ordering
-        ]
-
-        # TODO: this doesn't work with more than 1 point per object
-        # matched_image_b_points = np.take(image_b_points, ordering, axis=0)
-
-        matched_image_b_points = np.concatenate(
-            reordered_image_b_points_by_object, axis=0
-        )
-
-        return matched_image_b_points
-
-    def _order_by_distances_optimal(self, distances: np.ndarray) -> List[int]:
+    def _order_by_costs_optimal(self, cost_matrix: np.ndarray) -> List[int]:
         """
-        Make an ordering based on the distances between points.
-        An ordering is a list of integers in the range [0, self.num_objects) mapping points to lines.
+        Make an ordering based on the cost matrix, which is distance between points with an artificial high value replacing NaNs.
+        An ordering is a list of integers in the range [0, self.num_objects] mapping points to lines.
         Uses the "Hungarian algorithm" to find the optimal assignment.
         """
+        _chosen_distances, assignments = linear_sum_assignment(cost_matrix)
+        # total_distance = cost_matrix[chosen_distances, assignments].sum()  # computes the total distance between chosen points and lines
+        return assignments.tolist()
+    
+    def _distances_to_cost_matrix(self, distances: np.ndarray) -> np.ndarray:
         # Replace NaN values with a high cost
         large_value = 1e10
-        cost_matrix = np.nan_to_num(distances, nan=large_value)
+        return np.nan_to_num(distances, nan=large_value)
 
-        row_ind, col_ind = linear_sum_assignment(cost_matrix)
-        return col_ind.tolist()
-
+    # TODO: all the video stuff should be in its own class
     def _next_frames(self) -> Tuple[np.ndarray, np.ndarray]:
         reta, image_a = self.video_a.read()
         retb, image_b = self.video_b.read()
@@ -164,7 +207,7 @@ class StereoMatcher:
 
     def _load_video(self, index: int) -> cv2.VideoCapture:
         video_name = self.camera_collection.by_index(index).name
-        video_path = self.synchronized_video_path / f"{video_name}.mp4"
+        video_path = self.synchronized_video_folder_path / f"{video_name}.mp4"
 
         return cv2.VideoCapture(str(video_path))
 
@@ -182,15 +225,19 @@ class StereoMatcher:
     def add_frames(
         self,
         video_writer: cv2.VideoWriter,
-        frame_a: np.ndarray,
-        frame_b: np.ndarray,
-        frame_c: np.ndarray,
-        frame_d: np.ndarray,
+        frame_list: List[
+            np.ndarray
+        ],  # TODO: get separate lists of before/after frames, and make sure they're display properly
         swapped: bool,
     ) -> None:
+        if len(frame_list) % 2 != 0:
+            print(
+                f"WARNING: length of frame list is {len(frame_list)}, but must be even"
+            )
+
         # combine 4 frames in a grid, with frames a and b on top, and frames c and d on bottom
-        top_frame = np.concatenate((frame_a, frame_b), axis=1)
-        bottom_frame = np.concatenate((frame_c, frame_d), axis=1)
+        top_frame = np.concatenate(frame_list[0 : len(frame_list) // 2], axis=1)
+        bottom_frame = np.concatenate(frame_list[len(frame_list) // 2 :], axis=1)
         frame = np.concatenate((top_frame, bottom_frame), axis=0)
 
         if swapped:
@@ -205,22 +252,6 @@ class StereoMatcher:
             raise ValueError(
                 f"Camera index must be in {self.camera_collection.indexes}"
             )
-
-    def _validate_input_data(self, data_cams_frame_points_xy: np.ndarray) -> None:
-        if data_cams_frame_points_xy.ndim != 4:
-            raise ValueError(
-                "Data must be 4D (num_cams, num_frames, tracked_points, xy/xyz)"
-            )
-        if data_cams_frame_points_xy.shape[0] != len(self.camera_collection.ids):
-            raise ValueError(
-                "Number of cameras in camera collection must match number of cameras in data"
-            )
-        if data_cams_frame_points_xy.shape[2] % self.points_per_object != 0:
-            raise ValueError(
-                "Number of tracked points must be a multiple of points_per_object"
-            )
-        if data_cams_frame_points_xy.shape[3] not in {2, 3}:
-            raise ValueError("Data must be 2D (N, 2) or 3D (N, 3)")
 
 
 if __name__ == "__main__":
@@ -285,7 +316,9 @@ if __name__ == "__main__":
     b_index = 1
 
     # Get image points:
-    body_data_cams_frame_points_xy = np.load(body_data_path)
+    body_data_cams_frame_points_xy = homogenize_data_array(np.load(body_data_path))
+
+    num_objects = body_data_cams_frame_points_xy.shape[2] // points_per_object
 
     matcher = StereoMatcher(
         camera_collection,
@@ -293,7 +326,7 @@ if __name__ == "__main__":
         b_index,
         body_data_cams_frame_points_xy,
         video_path,
-        points_per_object,
+        num_objects,
     )
 
     matcher.match_videos()

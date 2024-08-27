@@ -20,6 +20,10 @@ class CameraCollection:
         self.cameras = cameras
 
     @property
+    def size(self):
+        return len(self.cameras)
+
+    @property
     def indexes(self):
         return [camera.index for camera in self.cameras]
 
