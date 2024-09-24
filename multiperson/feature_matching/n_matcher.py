@@ -33,7 +33,7 @@ class NMatcher:
 
         self.num_frames = self.data_cams_frame_points_xy.shape[1]
 
-    def match(self):
+    def match(self) -> np.ndarray:
         """
         Matches features across all cameras
         """
@@ -47,21 +47,21 @@ class NMatcher:
                 pair_to_stereo_matcher_map, frame_number
             )
 
-            print(total_cost_matrix_array)
+            # print(f"cost matrix: {total_cost_matrix_array}")
 
             # play funny hungarian algorithm game
             # TODO: this loop can be greatly improved, it's definitely not starting+ending at exactly the right place
             i = 0
             lower_bound = 0
             upper_bound = self.num_objects
+            # print(f"bounds for i={i}: {lower_bound}, {upper_bound}")
             ordering = self._order_by_costs_optimal(
                 total_cost_matrix_array[
                     lower_bound:upper_bound, lower_bound:upper_bound
                 ]
             )
             ordering_list = [ordering]
-            while i < (self.camera_collection.size - 1):
-                print(lower_bound, upper_bound)
+            while i < (self.camera_collection.size - 2): # -1 for 0 indexing, -1 for size of matrix (1 less than number of cameras)
                 total_cost_matrix_array[
                     lower_bound:upper_bound, lower_bound:upper_bound
                 ] = self._reorder_cost_matrix_columns(
@@ -74,6 +74,7 @@ class NMatcher:
                 i += 1
                 lower_bound = i * self.num_objects
                 upper_bound = lower_bound + self.num_objects
+                # print(f"bounds for i={i}: {lower_bound}, {upper_bound}")
 
                 # apply ordering across camera i's row, and add each reordered matrix to the corresponding matrix in camera 0's row
                 for j in range(i, self.camera_collection.size - 1):
@@ -106,15 +107,18 @@ class NMatcher:
                         lower_bound:upper_bound, lower_bound:upper_bound
                     ]
                 )
-                if (
-                    len(ordering) > 0
-                ):  # TODO: figure out why these array changes added an empty list
-                    ordering_list.append(ordering)
+                # print(f"{ordering}")
+                # if (
+                #     len(ordering) > 0
+                # ):  # TODO: figure out why these array changes added an empty list
+                ordering_list.append(ordering)
 
-            print(total_cost_matrix_array[0 : self.num_objects, :])
-            print(ordering_list)
+            # print(f"cost matrix after: {total_cost_matrix_array[0 : self.num_objects, :]}")
+            # print(f"ordering {ordering_list}")
 
             self._reorder_data_by_ordering_list(frame_number, ordering_list)
+
+        return self.data_cams_frame_points_xy
 
     def _reorder_data_by_ordering_list(self, frame_number, ordering_list):
         for index, ordering in enumerate(ordering_list):
@@ -135,8 +139,8 @@ class NMatcher:
             cost_matrix = matcher.match_by_frame_number(frame_number)
             cost_matrix_array[
                 pair[0] * self.num_objects : (pair[0] + 1) * self.num_objects,
-                (pair[1] - 1) * self.num_objects : pair[1] * self.num_objects,
-            ] = cost_matrix  # columns offset by 1 because first column is camera 1
+                (pair[1] - 1) * self.num_objects : pair[1] * self.num_objects, # columns offset by 1 because first column is camera 1
+            ] = cost_matrix
 
         return cost_matrix_array
 
@@ -309,10 +313,17 @@ if __name__ == "__main__":
     body_data_cams_frame_points_xy = homogenize_data_array(np.load(body_data_path))
 
     matcher = NMatcher(
-        camera_collection,
-        body_data_cams_frame_points_xy,
-        video_path,
-        points_per_object,
+        camera_collection=camera_collection,
+        data_cams_frame_points_xy=body_data_cams_frame_points_xy,
+        synchronized_video_folder_path=video_path,
+        points_per_object=points_per_object,
     )
 
-    matcher.match()
+    matched_data = matcher.match()
+
+    # save out matched_data
+    for i in range((matched_data.shape[2] // points_per_object)):
+        save_path = body_data_path.parent / (body_data_path.stem + f"_person{i}.npy")
+        print(f"saving person {i} to {save_path}")
+
+        np.save(save_path, matched_data[:, :, i * points_per_object : (i + 1) * points_per_object, :])
