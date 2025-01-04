@@ -38,6 +38,9 @@ if __name__ == "__main__":
     #     / "assets/sample_data/freemocap_sample_data_camera_calibration.toml"
     # )
 
+    print("This entrypoint is out of date - refer to n_matcher.py")
+    return
+
     path_to_calibration_toml = Path("/Users/philipqueen/freemocap_data/recording_sessions/2_brightest_points_2_cams/recording_14_30_34_gmt-6_calibration/recording_14_30_34_gmt-6_calibration_camera_calibration.toml")
     camera_collection = CameraCollection.from_file(path_to_calibration_toml)
 

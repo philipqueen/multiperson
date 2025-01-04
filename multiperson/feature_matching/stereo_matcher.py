@@ -121,7 +121,7 @@ class StereoMatcher:
 
     def match_by_frame_number(self, frame_number: int) -> np.ndarray:
         """
-        Public method to get cost matrix of objects in B by distance to A for a given frame
+        Public method to get cost matrix of objects in B by distance to the epipolar lines from objects in A for a given frame
         """
         points_a = self.data_cams_frame_points_xy[
             self.index_a, frame_number, :, :
@@ -212,11 +212,10 @@ class StereoMatcher:
         return cv2.VideoCapture(str(video_path))
 
     def _video_writer(self) -> cv2.VideoWriter:
+        save_path = Path(__file__).parent.parent.parent / f"stereo_match_{self.index_a}_{self.index_b}.mp4"
+        print(f"will save output video to path {save_path}")
         return cv2.VideoWriter(
-            str(
-                Path(__file__).parent.parent.parent
-                / f"stereo_match_{self.index_a}_{self.index_b}.mp4"
-            ),
+            str(save_path),
             cv2.VideoWriter.fourcc(*"mp4v"),
             30,
             (1440, 1080),
@@ -291,7 +290,7 @@ if __name__ == "__main__":
         "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_22_35_gmt-4__multiperson_no_contact/synchronized_videos/"
     )
     body_data_path = Path(
-        "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_22_35_gmt-4__multiperson_no_contact/output_data/raw_data/yolo2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
+        "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_22_35_gmt-4__multiperson_no_contact/output_data/raw_data/yolo_2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
     )
 
     # # crossing behind:

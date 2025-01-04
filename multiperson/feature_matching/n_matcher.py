@@ -42,19 +42,23 @@ class NMatcher:
 
         for frame_number in range(self.num_frames):
             # construct our mega cost matrix
-            # print(f"frame {frame_number}")
             total_cost_matrix_array = self._create_cost_matrix_array(
                 pair_to_stereo_matcher_map, frame_number
             )
 
-            # print(f"cost matrix: {total_cost_matrix_array}")
+            # print(f"cost matrix for frame {frame_number}: {total_cost_matrix_array}")
 
             # play funny hungarian algorithm game
-            # TODO: this loop can be greatly improved, it's definitely not starting+ending at exactly the right place
+            """
+            general process here: 
+            1. For match (cameras A and B),  find the optimal ordering with Hungarian algorithm.
+            2. Reorder the cost matrix columns to match the ordering, AND reorder the rows including camera B to match the ordering as well.
+            3. Add all the rows including camera B to the corresponding rows with camera A.
+            4. Repeat for each subsequent camera. But now, the new Camera B also has the ordering from the previous camera B added to it.
+            """
             i = 0
             lower_bound = 0
             upper_bound = self.num_objects
-            # print(f"bounds for i={i}: {lower_bound}, {upper_bound}")
             ordering = self._order_by_costs_optimal(
                 total_cost_matrix_array[
                     lower_bound:upper_bound, lower_bound:upper_bound
@@ -74,15 +78,11 @@ class NMatcher:
                 i += 1
                 lower_bound = i * self.num_objects
                 upper_bound = lower_bound + self.num_objects
-                # print(f"bounds for i={i}: {lower_bound}, {upper_bound}")
 
                 # apply ordering across camera i's row, and add each reordered matrix to the corresponding matrix in camera 0's row
                 for j in range(i, self.camera_collection.size - 1):
                     temp_lower = j * self.num_objects
                     temp_upper = temp_lower + self.num_objects
-                    print(
-                        f"temp bounds for j={j}: lower {temp_lower}, upper {temp_upper}"
-                    )
                     total_cost_matrix_array[
                         lower_bound:upper_bound, temp_lower:temp_upper
                     ] = self._reorder_cost_matrix_rows(
@@ -107,14 +107,10 @@ class NMatcher:
                         lower_bound:upper_bound, lower_bound:upper_bound
                     ]
                 )
-                # print(f"{ordering}")
-                # if (
-                #     len(ordering) > 0
-                # ):  # TODO: figure out why these array changes added an empty list
                 ordering_list.append(ordering)
 
             # print(f"cost matrix after: {total_cost_matrix_array[0 : self.num_objects, :]}")
-            # print(f"ordering {ordering_list}")
+            print(f"ordering {ordering_list}")
 
             self._reorder_data_by_ordering_list(frame_number, ordering_list)
 
@@ -132,6 +128,11 @@ class NMatcher:
         pair_to_stereo_matcher_map: Dict[Tuple[int, int], StereoMatcher],
         frame_number: int,
     ) -> np.ndarray:
+        """
+        Creates a 2D array of cost matrices, where each cost matrix is the distance from objects in B to the matching epipolar lines from objects in A.
+        Output array is shape (num_objects * (num_cameras - 1), num_objects * (num_cameras - 1)).
+        Each cost matrix in the array is for a different pair of cameras, and is size (num_objects, num_objects).
+        """
         array_size = (self.camera_collection.size - 1) * self.num_objects
         cost_matrix_array = np.full((array_size, array_size), fill_value=np.nan)
 
@@ -143,20 +144,6 @@ class NMatcher:
             ] = cost_matrix
 
         return cost_matrix_array
-
-        # array_of_cost_matrices = np.full(
-        #     (self.camera_collection.size - 1, self.camera_collection.size - 1),
-        #     fill_value=np.nan,
-        #     dtype=object,
-        # )
-
-        # for pair, matcher in pair_to_stereo_matcher_map.items():
-        #     cost_matrix = matcher.match_by_frame_number(frame_number)
-        #     array_of_cost_matrices[pair[0], pair[1] - 1] = (
-        #         cost_matrix  # columns offset by 1 because first column is camera 1
-        #     )
-
-        # return array_of_cost_matrices
 
     def _reorder_points(self, camera: int, frame: int, ordering: List[int]) -> None:
         """
@@ -208,8 +195,8 @@ class NMatcher:
     def _order_by_costs_optimal(self, cost_matrix: np.ndarray) -> List[int]:
         """
         Make an ordering based on the cost matrix, which is distance between points with an artificial high value replacing NaNs.
-        An ordering is a list of integers in the range [0, self.num_objects] mapping points to lines.
-        Uses the "Hungarian algorithm" to find the optimal assignment.
+        An ordering is a list of integers in the range [0, self.num_objects] mapping points (index) to lines (value).
+        Uses the "Hungarian algorithm" to find the optimal assignment, where the optimal assignment is the one that minimizes the total distance between chosen points and lines.
         """
         _chosen_distances, assignments = linear_sum_assignment(cost_matrix)
         # total_distance = cost_matrix[chosen_distances, assignments].sum()  # computes the total distance between chosen points and lines
@@ -218,7 +205,11 @@ class NMatcher:
     def _normalize_and_add_cost_matrices(
         self, first_matrix: np.ndarray, second_matrix: np.ndarray
     ) -> np.ndarray:
+        """
+        Normalize the cost matrices and add them together.
+        """
         # TODO: normalize cost matrices by min/max or z score normalization
+        # normalization should be in relation to image size? or should it just be distance in mm?
         return first_matrix + second_matrix
 
     def _reorder_cost_matrix_columns(
@@ -229,6 +220,9 @@ class NMatcher:
     def _reorder_cost_matrix_rows(
         self, cost_matrix: np.ndarray, ordering: List[int]
     ) -> np.ndarray:
+        """
+        Use the ordering to reorder the rows of the cost matrix.
+        """
         return cost_matrix[ordering, :]
 
     def _validate_input_data(self, data_cams_frame_points_xy: np.ndarray) -> None:
@@ -285,7 +279,7 @@ if __name__ == "__main__":
         "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_22_35_gmt-4__multiperson_no_contact/synchronized_videos/"
     )
     body_data_path = Path(
-        "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_22_35_gmt-4__multiperson_no_contact/output_data/raw_data/yolo2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
+        "/Users/philipqueen/freemocap_data/recording_sessions/session_2024-06-27_15_16_32/recording_15_22_35_gmt-4__multiperson_no_contact/output_data/raw_data/yolo_2dData_numCams_numFrames_numTrackedPoints_pixelXY.npy"
     )
 
     # # crossing behind:
